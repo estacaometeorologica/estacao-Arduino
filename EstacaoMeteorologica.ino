@@ -3,8 +3,7 @@
 #include "DHT.h"
 #include "Adafruit_BMP085.h"
 #include "Thread.h"
-#include <StandardCplusplus.h>
-#include <vector>
+#include <ArduinoSTL.h>
 #include <SoftwareSerial.h>
 
 
@@ -51,7 +50,7 @@ std::vector<Sensor> sensors;
 String data;
 
 
-void reset(){
+void resetWifi(){
   Serial.println("Resetting WIFI Module...");
   esp.println("AT+RST");
   delay(1000);
@@ -84,14 +83,14 @@ void postData() {
   data = getJSON();
   if (USB) Serial.println(data);
   else{
-    httppost();
+    httpPost();
     delay(1000);
   }
 }
 
 
 // This method makes a HTTP connection to the server and POSTs data
-void httppost() {
+void httpPost() {
   Serial.println("Posting data..."); 
   esp.println("AT+CIPSTART=\"TCP\",\"" + SERVER + "\",80");//start a TCP connection.
   if( esp.find("OK")) {
@@ -252,72 +251,16 @@ void setup() {
   dht.begin();
   if (!bmp180.begin()) 
   {
-    Serial.println("Sensor nao encontrado !!");
+    Serial.println("BMP180 Sensor not found!");
     while (1) {}
   }
   //Initialize wifi
   esp.begin(19200);
   
-  /*sendData("AT+RST\r\n", 2000, DEBUG);
-  delay(1000);
-  Serial.println("Versao de firmware");
-  delay(3000);
-  sendData("AT+GMR\r\n", 2000, DEBUG); // rst
-  // Configure na linha abaixo a velocidade desejada para a
-  // comunicacao do modulo ESP8266 (9600, 19200, 38400, etc)
-  sendData("AT+CIOBAUD=19200\r\n", 2000, DEBUG);
-  Serial.println("** Final **");
-    // Inicia o web server na porta 80
-  sendData("AT+CIPSERVER=1,80\r\n", 1000, DEBUG);*/
-
-  if(!USB){
-    reset();
+ if(!USB){
+    resetWifi();
     connectWifi();
   }
-  //data = getJSON();
-  //Serial.println("Data: " + data);
-  //postData();
-
-  /*
-WiFiClient client;
-const char* host="http://jsonplaceholder.typicode.com/";
-String PostData = "title=Regis&body=Teste&userId=1111";
-
-if (client.connect(host, 80)) {
-
-client.println("POST /posts HTTP/1.1");
-client.println("Host: jsonplaceholder.typicode.com");
-client.println("Cache-Control: no-cache");
-client.println("Content-Type: application/x-www-form-urlencoded");
-client.print("Content-Length: ");
-client.println(PostData.length());
-client.println();
-client.println(PostData);
-
-long interval = 2000;
-unsigned long currentMillis = millis(), previousMillis = millis();
-
-while(!client.available()){
-
-  if( (currentMillis - previousMillis) > interval ){
-
-    Serial.println("Timeout");
-    client.stop();     
-    return;
-  }
-  currentMillis = millis();
-}
-
-while (client.connected())
-{
-  if ( client.available() )
-  {
-    char str=client.read();
-    Serial.println(str);
-  }      
-}
-
-}�*/
 
   printThread = Thread();
   sensor1Thread = Thread();
