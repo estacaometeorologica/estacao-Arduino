@@ -22,13 +22,13 @@ const String URI = "/meteorologia-api/v1/index.php/submitreading";
 const String AUTH = "12345678901234567890";
 
 //modulo wifi
-//RX pino 12, TX pino 11
+//TX pino 11, RX pino 11
 SoftwareSerial esp(11, 12);
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_BMP085 bmp180;
 Thread printThread, sensor1Thread, sensor2Thread, sensor3Thread;
 
-//sensor class//////////////
+//sensor class//////////////////////////////////////////////////////////////////////
 class Sensor{
     public:
         String name;
@@ -45,7 +45,7 @@ class Sensor{
           magnitude = new String[probes];
         };
 };
-///////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
 std::vector<Sensor> sensors;
 
 String data;
@@ -71,15 +71,15 @@ void connectWifi() {
     Serial.println("Connected!");
     // Mostra o endereco IP
     sendData("AT+CIFSR\r\n", 1000, DEBUG);
+    // Configura para multiplas conexoes
+    //sendData("AT+CIPMUX=1\r\n", 1000, DEBUG);
   }
   else {
     connectWifi();
-    Serial.println("Cannot connect to wifi"); 
   }
 }
 
 
-// This method makes a HTTP connection to the server and POSTs data
 void postData() {
   data = getJSON();
   if (USB) Serial.println(data);
@@ -89,6 +89,8 @@ void postData() {
   }
 }
 
+
+// This method makes a HTTP connection to the server and POSTs data
 void httppost() {
   Serial.println("Posting data..."); 
   esp.println("AT+CIPSTART=\"TCP\",\"" + SERVER + "\",80");//start a TCP connection.
@@ -97,13 +99,12 @@ void httppost() {
   }
   delay(1000);
   String postRequest =
-"POST " + URI + " HTTP/1.1\r\n" +
-"Authorization: " + AUTH + "\r\n" +
-"Content-Length: " + (data.length() + 6) + "\r\n" +
-"Connection: Close\r\n" +
-"Content-Type: application/x-www-form-urlencoded\r\n" +
-"Host: " + SERVER + "\r\n" +
-"\r\n" + "data=" + data;
+    "POST " + URI + " HTTP/1.1\r\n" +
+    "Authorization: " + AUTH + "\r\n" +
+    "Content-Length: " + (data.length() + 6) + "\r\n" +
+    "Connection: Close\r\n" +
+    "Content-Type: application/x-www-form-urlencoded\r\n" +
+    "Host: " + SERVER + "\r\n" + "\r\n" + "data=" + data;
 
   Serial.println(postRequest);
 
@@ -266,17 +267,7 @@ void setup() {
   // comunicacao do modulo ESP8266 (9600, 19200, 38400, etc)
   sendData("AT+CIOBAUD=19200\r\n", 2000, DEBUG);
   Serial.println("** Final **");
-  
-  sendData("AT+RST\r\n", 2000, DEBUG); // rst
-  // Conecta a rede wireless
-  sendData("AT+CWJAP=\"wFeliz\",\"ifrsfeliz\"\r\n", 2000, DEBUG);
-  delay(5000);
-  sendData("AT+CWMODE=1\r\n", 1000, DEBUG);
-  // Mostra o endereco IP
-  sendData("AT+CIFSR\r\n", 1000, DEBUG);
-  // Configura para multiplas conexoes
-  sendData("AT+CIPMUX=1\r\n", 1000, DEBUG);
-  // Inicia o web server na porta 80
+    // Inicia o web server na porta 80
   sendData("AT+CIPSERVER=1,80\r\n", 1000, DEBUG);*/
 
   if(!USB){
