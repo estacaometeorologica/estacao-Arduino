@@ -1,4 +1,3 @@
-// Example testing sketch for various humidity/temperature/pressure sensors
 // Written by Régis Martiny
 
 #include "DHT.h"
@@ -327,7 +326,7 @@ while (client.connected())
   }      
 }
 
-} */
+}�*/
 
   printThread = Thread();
   sensor1Thread = Thread();
