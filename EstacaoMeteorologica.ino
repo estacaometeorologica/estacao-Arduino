@@ -5,26 +5,53 @@
 #include "Thread.h"
 #include <ArduinoSTL.h>
 #include <SoftwareSerial.h>
+#include <UIPEthernet.h>
+
+
+#define DEBUG true
+#define USB false
+#define WIRELESS false
+
 
 
 //sensor luminosidade (LDR)
 #define LDRPIN 13
 //sensor temp e hum
-#define DHTPIN 2     // what digital pin we're connected to
+#define DHTPIN 3     // what digital pin we're connected to
 #define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
-#define DEBUG true
-#define USB false
-const String WIFI_SSID = "wFeliz";
-const String WIFI_PASS = "ifrsfeliz";
-const String SERVER = "192.168.103.227";
-const String URI = "/meteorologia-api/v1/index.php/submitreading";
-const String AUTH = "12345678901234567890";
+
+//modulo ethernet
+EthernetClient client;
+signed long next;
 
 //modulo wifi
-//TX pino 11, RX pino 11
-SoftwareSerial esp(11, 12);
+//RX pino 11, TX pino 12
+SoftwareSerial esp(9, 10);
+const byte CH_PD=7;
+const byte RST=8;
+
+//modulo DHT22
 DHT dht(DHTPIN, DHTTYPE);
+
+//modulo BMP180
 Adafruit_BMP085 bmp180;
+
+const int INTERVAL = 5000;
+IPAddress SERVER = IPAddress(192,168,103,227); // IP Adress (or name) of server to dump data to
+int SERVER_PORT = 80;
+const String URI = "/meteorologia-api/v1/index.php/submitreading";
+const String AUTH = "12345678901234567890";
+uint8_t MAC[6] = {0x00,0x01,0x02,0x03,0x04,0x05};
+IPAddress IP = IPAddress(192,168,103,100);
+IPAddress DNS = IPAddress(8,8,8,8);
+IPAddress GW = IPAddress(0,0,0,0);
+IPAddress SUBNET = IPAddress(255,255,255,0);
+const String WIFI_SSID = "wFeliz";
+const String WIFI_PASS = "ifrsfeliz";
+//const String SERVER = "192.168.103.227";
+
+
+
 Thread printThread, sensor1Thread, sensor2Thread, sensor3Thread;
 
 //sensor class//////////////////////////////////////////////////////////////////////
@@ -52,8 +79,9 @@ String data;
 
 void resetWifi(){
   Serial.println("Resetting WIFI Module...");
-  esp.println("AT+RST");
+  sendData("AT+RST\r\n", 2000, DEBUG);
   delay(1000);
+  Serial.println("Versao de firmware");
   if(esp.find("OK")) {
     Serial.println("Module Reset");
   }
@@ -83,16 +111,42 @@ void postData() {
   data = getJSON();
   if (USB) Serial.println(data);
   else{
-    httpPost();
+    if(WIRELESS)
+      wireless_httpPost();
+    else
+      wired_httpPost();
     delay(1000);
   }
 }
 
-
+void wired_httpPost() {
+  if (client.connect(SERVER, SERVER_PORT)) {
+    Serial.println("-> Connected");
+  
+    // Make a HTTP request:
+    String postRequest =
+      "POST " + URI + " HTTP/1.1\r\n" +
+      "Authorization: " + AUTH + "\r\n" +
+      "Content-Length: " + (data.length()+6) + "\r\n" +
+      "Connection: Close\r\n" +
+      "Content-Type: application/x-www-form-urlencoded\r\n" +
+      "Host: " + SERVER + "\r\n" + "\r\n" + "data=" + data + "\n";
+  
+    client.println(postRequest);
+    delay(200);
+    client.stop();
+    Serial.println("Dados enviados: " + data);
+  }
+  else {
+    // you didn't get a connection to the server:
+    Serial.println("--> connection failed");
+  }
+}
+  
 // This method makes a HTTP connection to the server and POSTs data
-void httpPost() {
+void wireless_httpPost() {
   Serial.println("Posting data..."); 
-  esp.println("AT+CIPSTART=\"TCP\",\"" + SERVER + "\",80");//start a TCP connection.
+  esp.println("AT+CIPSTART=\"TCP\",\"" + String(SERVER) + "\",80");//start a TCP connection.
   if( esp.find("OK")) {
     Serial.println("TCP connection ready");
   }
@@ -100,7 +154,7 @@ void httpPost() {
   String postRequest =
     "POST " + URI + " HTTP/1.1\r\n" +
     "Authorization: " + AUTH + "\r\n" +
-    "Content-Length: " + (data.length() + 6) + "\r\n" +
+    "Content-Length: " + (data.length()) + "\r\n" +
     "Connection: Close\r\n" +
     "Content-Type: application/x-www-form-urlencoded\r\n" +
     "Host: " + SERVER + "\r\n" + "\r\n" + "data=" + data;
@@ -195,24 +249,25 @@ void printvalues(){
 }
 
 void temphum(){
+  float h, t, f;
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
+  h = dht.readHumidity();
   // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
+  t = dht.readTemperature();
   // Read temperature as Fahrenheit (isFahrenheit = true)
-  float f = dht.readTemperature(true);
-
+  f = dht.readTemperature(true);
+  
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t) || isnan(f)) {
     Serial.println("Failed to read from DHT sensor!");
-    return;
+    h = t = f = -1;
+    //return;
   }
-
   // Compute heat index in Fahrenheit (the default)
-  float hif = dht.computeHeatIndex(f, h);
+  //float hif = dht.computeHeatIndex(f, h);
   // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
+  //float hic = dht.computeHeatIndex(t, h, false);
 
   sensors[0].readerId[0] = 1;
   sensors[0].value[0] = String(t);
@@ -226,11 +281,17 @@ void temphum(){
 }
 
 void pressalt(){
+  float p = -1;
+  if (bmp180.begin()){
+    p = bmp180.readPressure();
+  }else{
+    Serial.println("Failed to read from BMP180 sensor!");
+  }
   //sensors[1].readerId[0] = 4;
   //sensors[1].value[0] = String(bmp180.readTemperature());
   //sensors[1].magnitude[0] = "C";
   sensors[1].readerId[0] = 3;
-  sensors[1].value[0] = String(bmp180.readPressure());
+  sensors[1].value[0] = String(p);
   sensors[1].magnitude[0] = "Pa";
   //sensors[1].value[2] = String(bmp180.readAltitude());
   //sensors[1].magnitude[2] = "m";
@@ -252,14 +313,33 @@ void setup() {
   if (!bmp180.begin()) 
   {
     Serial.println("BMP180 Sensor not found!");
-    while (1) {}
   }
-  //Initialize wifi
-  esp.begin(19200);
   
  if(!USB){
-    resetWifi();
-    connectWifi();
+    if(WIRELESS){
+      //Initialize wifi
+      esp.begin(115200);
+      resetWifi();
+      //sendData("AT+GMR\r\n", 2000, DEBUG); // rst
+      // Configure na linha abaixo a velocidade desejada para a
+      // comunicacao do modulo ESP8266 (9600, 19200, 38400, 57600, 115200)
+      //sendData("AT+CIOBAUD=19200\r\n", 2000, DEBUG);
+      //Serial.println("** Final **");
+      connectWifi();
+    }
+    else{
+      Ethernet.begin(MAC, IP, DNS, GW, SUBNET);
+
+      Serial.print("localIP: ");
+      Serial.println(Ethernet.localIP());
+      Serial.print("subnetMask: ");
+      Serial.println(Ethernet.subnetMask());
+      Serial.print("gatewayIP: ");
+      Serial.println(Ethernet.gatewayIP());
+      Serial.print("dnsServerIP: ");
+      Serial.println(Ethernet.dnsServerIP());
+      next = 0;
+    }
   }
 
   printThread = Thread();
@@ -267,7 +347,7 @@ void setup() {
   sensor2Thread = Thread();
   sensor3Thread = Thread();
   
-  printThread.setInterval(300000); //5 min //300000
+  printThread.setInterval(10000); //5 min //300000
   sensor1Thread.setInterval(3000);
   sensor2Thread.setInterval(1000);//Fixed to 1000 
   sensor3Thread.setInterval(1000);//Fixed to 1000 
@@ -290,8 +370,8 @@ void setup() {
   sensors.push_back(sensor3);
   
   printThread.onRun(postData);
-  sensor1Thread.onRun(temphum);
-  sensor2Thread.onRun(pressalt);
+  sensor1Thread.onRun(temphum); //dht22
+  sensor2Thread.onRun(pressalt); //bmp180
   sensor3Thread.onRun(luminosidade);
 
   temphum();
